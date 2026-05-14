@@ -1,0 +1,111 @@
+name: Simulator build + screenshots
+
+on:
+  workflow_dispatch:
+    inputs:
+      device:
+        description: 'Simulator device name'
+        required: false
+        default: 'iPhone 16 Pro'
+
+jobs:
+  simulator:
+    name: Build .app and capture screenshots
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 16
+        run: sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
+
+      - name: Build for simulator
+        run: |
+          xcodebuild \
+            -project NeonTetris.xcodeproj \
+            -scheme NeonTetris \
+            -configuration Debug \
+            -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Locate built .app
+        id: locate
+        run: |
+          APP_PATH=$(find build/Build/Products -name "NeonTetris.app" -type d | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            echo "NeonTetris.app not found"; exit 1
+          fi
+          echo "APP_PATH=$APP_PATH" >> $GITHUB_OUTPUT
+          echo "Found at $APP_PATH"
+
+      - name: Zip .app for Appetize / manual download
+        run: |
+          mkdir -p artifacts
+          cd "$(dirname "${{ steps.locate.outputs.APP_PATH }}")"
+          zip -ry "$GITHUB_WORKSPACE/artifacts/NeonTetris-Simulator.zip" "NeonTetris.app"
+
+      - name: Boot simulator and install
+        id: sim
+        run: |
+          # Create a fresh simulator each run so screenshots are deterministic.
+          UDID=$(xcrun simctl create "NeonTetris-CI" "${{ inputs.device }}")
+          echo "UDID=$UDID" >> $GITHUB_OUTPUT
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" "${{ steps.locate.outputs.APP_PATH }}"
+
+      - name: Launch app and capture screenshots
+        run: |
+          UDID="${{ steps.sim.outputs.UDID }}"
+          mkdir -p Screenshots
+
+          # Bundle ID matches PRODUCT_BUNDLE_IDENTIFIER in the project.
+          BUNDLE_ID=$(plutil -p "${{ steps.locate.outputs.APP_PATH }}/Info.plist" | awk -F\" '/CFBundleIdentifier/{print $4}')
+          echo "Bundle: $BUNDLE_ID"
+
+          xcrun simctl launch "$UDID" "$BUNDLE_ID"
+          sleep 4 # splash animation
+          xcrun simctl io "$UDID" screenshot --type=png Screenshots/01-main-menu.png
+
+          # Tap PLAY (roughly middle-bottom of menu)
+          xcrun simctl ui "$UDID" tap 195 720 || true
+          sleep 2
+          xcrun simctl io "$UDID" screenshot --type=png Screenshots/02-gameplay.png
+
+          # Let it play a few seconds — pieces will fall under gravity.
+          sleep 4
+          xcrun simctl io "$UDID" screenshot --type=png Screenshots/03-gameplay-progressed.png
+
+          # Pause: tap the pause icon top-left
+          xcrun simctl ui "$UDID" tap 40 70 || true
+          sleep 1
+          xcrun simctl io "$UDID" screenshot --type=png Screenshots/04-pause.png
+
+      - name: Teardown simulator
+        if: always()
+        run: |
+          UDID="${{ steps.sim.outputs.UDID }}"
+          if [ -n "$UDID" ]; then
+            xcrun simctl shutdown "$UDID" || true
+            xcrun simctl delete "$UDID" || true
+          fi
+
+      - name: Upload .app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NeonTetris-Simulator-app
+          path: artifacts/NeonTetris-Simulator.zip
+          retention-days: 14
+
+      - name: Upload screenshots artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NeonTetris-Screenshots
+          path: Screenshots/
+          retention-days: 30
