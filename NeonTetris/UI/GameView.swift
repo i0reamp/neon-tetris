@@ -26,14 +26,16 @@ struct GameView: View {
     @State private var clearBannerVisible = false
 
     var body: some View {
-        spriteLayer
-            .ignoresSafeArea()
-            .overlay(alignment: .top) {
+        ZStack {
+            spriteLayer
+                .ignoresSafeArea()
+
+            // SwiftUI HUD column: top bar + flexible spacer + score/hold/next + controls
+            VStack(spacing: 0) {
                 topBar
                     .padding(.top, 8)
                     .padding(.horizontal, 16)
-            }
-            .overlay(alignment: .bottom) {
+                Spacer(minLength: 0)
                 VStack(spacing: 6) {
                     HUDView(engine: engine)
                     bottomControls
@@ -41,37 +43,44 @@ struct GameView: View {
                 }
                 .padding(.bottom, 16)
             }
-            .overlay(alignment: .center) {
-                if let kind = lastClearKind, clearBannerVisible, kind != .none {
-                    ClearBanner(kind: kind)
-                        .transition(.scale.combined(with: .opacity))
-                }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if let kind = lastClearKind, clearBannerVisible, kind != .none {
+                ClearBanner(kind: kind)
+                    .transition(.scale.combined(with: .opacity))
             }
-            .overlay {
-                if showingPauseOverlay {
-                    PauseOverlayView(
-                        onResume: { resumeGame() },
-                        onRestart: {
-                            engine.start()
-                            showingPauseOverlay = false
-                        },
-                        onMenu: { coordinator.go(to: .mainMenu) }
-                    )
+
+            if showingPauseOverlay {
+                PauseOverlayView(
+                    onResume: { resumeGame() },
+                    onRestart: {
+                        engine.start()
+                        showingPauseOverlay = false
+                    },
+                    onMenu: { coordinator.go(to: .mainMenu) }
+                )
+                .transition(.opacity.combined(with: .scale))
+            }
+
+            if engine.state == .gameOver {
+                GameOverView(engine: engine,
+                             onRestart: { engine.start() },
+                             onMenu: { coordinator.go(to: .mainMenu) })
                     .transition(.opacity.combined(with: .scale))
-                }
             }
-            .overlay {
-                if engine.state == .gameOver {
-                    GameOverView(engine: engine,
-                                 onRestart: { engine.start() },
-                                 onMenu: { coordinator.go(to: .mainMenu) })
-                        .transition(.opacity.combined(with: .scale))
-                }
-            }
-            .preferredColorScheme(.dark)
-            .onAppear { wireUpOnce() }
-            .gesture(panGesture)
-            .simultaneousGesture(tapGesture)
+
+            // DEBUG: show actual SpriteKit scene size & cellSize. Remove once
+            // layout converges on real devices.
+            DebugLayoutBadge(scene: sceneHolder.scene)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(.leading, 6)
+                .padding(.top, 6)
+                .allowsHitTesting(false)
+        }
+        .preferredColorScheme(.dark)
+        .onAppear { wireUpOnce() }
+        .gesture(panGesture)
+        .simultaneousGesture(tapGesture)
     }
 
     // MARK: - Sprite layer
@@ -301,6 +310,28 @@ private struct IconChip: View {
                     .overlay(Circle().stroke(tint.opacity(0.7), lineWidth: 1.2))
                     .shadow(color: tint.opacity(0.55), radius: 10)
             }
+    }
+}
+
+/// Tiny diagnostic chip that prints the actual scene size and cell size that
+/// SpriteKit settled on, so we can tell at a glance if the on-device layout
+/// matches what we expect from looking at the code.
+private struct DebugLayoutBadge: View {
+    let scene: GameScene
+    @State private var tick = 0
+    private let timer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        let sz = scene.size
+        let br = scene.boardRect
+        Text("scn \(Int(sz.width))×\(Int(sz.height)) · cell \(Int(scene.cellSize)) · board \(Int(br.width))×\(Int(br.height)) y\(Int(br.minY))→\(Int(br.maxY))")
+            .font(.system(size: 9, weight: .bold, design: .monospaced))
+            .foregroundStyle(.yellow.opacity(0.95))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(Color.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 4))
+            .onReceive(timer) { _ in tick &+= 1 }
+            .id(tick)
     }
 }
 
