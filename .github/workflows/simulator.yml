@@ -100,27 +100,43 @@ jobs:
           UDID="${{ steps.boot.outputs.UDID }}"
           mkdir -p Screenshots
 
-          # Bundle ID matches PRODUCT_BUNDLE_IDENTIFIER in the project.
           BUNDLE_ID=$(plutil -p "${{ steps.locate.outputs.APP_PATH }}/Info.plist" | awk -F\" '/CFBundleIdentifier/{print $4}')
           echo "Bundle: $BUNDLE_ID"
 
-          xcrun simctl launch "$UDID" "$BUNDLE_ID"
-          sleep 4 # splash animation
-          xcrun simctl io "$UDID" screenshot --type=png Screenshots/01-main-menu.png
+          # simctl does not provide UI tap automation. Instead we use the
+          # iOS launch-arg convention: any "-<key> <value>" pair on the
+          # `simctl launch` command line becomes a UserDefaults entry for the
+          # duration of the process. The app reads NEON_INITIAL_SCREEN at
+          # startup and jumps directly to the requested screen.
+          capture () {
+            local screen=$1
+            local out=$2
+            local settle=${3:-3}
+            echo "::group::Capturing $screen -> $out"
+            xcrun simctl terminate "$UDID" "$BUNDLE_ID" 2>/dev/null || true
+            sleep 1
+            xcrun simctl launch "$UDID" "$BUNDLE_ID" -NEON_INITIAL_SCREEN "$screen"
+            sleep "$settle"
+            xcrun simctl io "$UDID" screenshot --type=png "Screenshots/$out"
+            echo "::endgroup::"
+          }
 
-          # Tap PLAY (roughly middle-bottom of menu)
-          xcrun simctl ui "$UDID" tap 195 720 || true
-          sleep 2
-          xcrun simctl io "$UDID" screenshot --type=png Screenshots/02-gameplay.png
+          # Splash needs to be captured BEFORE its 1.5 s auto-advance fires.
+          capture splash      01-splash.png       0.6
+          capture mainMenu    02-main-menu.png    2
+          capture game        03-gameplay.png     3
+          capture settings    04-settings.png     2
+          capture about       05-about.png        2
 
-          # Let it play a few seconds — pieces will fall under gravity.
-          sleep 4
-          xcrun simctl io "$UDID" screenshot --type=png Screenshots/03-gameplay-progressed.png
-
-          # Pause: tap the pause icon top-left
-          xcrun simctl ui "$UDID" tap 40 70 || true
+          # Bonus: a gameplay shot where a few pieces have already settled
+          # under gravity. Launch fresh game and just wait.
+          xcrun simctl terminate "$UDID" "$BUNDLE_ID" 2>/dev/null || true
           sleep 1
-          xcrun simctl io "$UDID" screenshot --type=png Screenshots/04-pause.png
+          xcrun simctl launch "$UDID" "$BUNDLE_ID" -NEON_INITIAL_SCREEN game
+          sleep 8
+          xcrun simctl io "$UDID" screenshot --type=png Screenshots/06-gameplay-stacked.png
+
+          ls -la Screenshots/
 
       - name: Teardown simulator
         if: always()
