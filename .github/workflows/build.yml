@@ -20,61 +20,100 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Select Xcode 16
-        run: sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
+      - name: Pick newest Xcode 16
+        run: |
+          # Use the highest Xcode_16*.app available; macOS runner images vary.
+          NEWEST=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -n 1)
+          if [ -z "$NEWEST" ]; then
+            echo "No Xcode 16 found, falling back to default";
+            xcode-select -p
+          else
+            sudo xcode-select -s "$NEWEST/Contents/Developer"
+          fi
+          xcodebuild -version
 
       - name: Show toolchain
         run: |
           xcodebuild -version
           swift --version
 
+      - name: Pick a Simulator that exists
+        id: sim
+        run: |
+          DEST=$(xcrun simctl list devices available --json | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          best = None
+          for runtime, devs in data['devices'].items():
+              if 'iOS' not in runtime: continue
+              for d in devs:
+                  if d.get('isAvailable') and 'iPhone' in d.get('name',''):
+                      best = d['name']
+                      break
+              if best: break
+          print(best or 'iPhone 16 Pro')
+          ")
+          echo "Picked simulator: $DEST"
+          echo "device=$DEST" >> $GITHUB_OUTPUT
+
       - name: Resolve scheme
         run: xcodebuild -list -project NeonTetris.xcodeproj
 
       - name: Build (Simulator, Debug)
+        id: build
         run: |
-          set -o pipefail
+          set +e
+          mkdir -p logs
           xcodebuild \
             -project NeonTetris.xcodeproj \
             -scheme NeonTetris \
             -configuration Debug \
-            -destination "platform=iOS Simulator,name=iPhone 16 Pro" \
+            -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.device }}" \
             -derivedDataPath build \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            build | xcbeautify --renderer github-actions || \
-          xcodebuild \
-            -project NeonTetris.xcodeproj \
-            -scheme NeonTetris \
-            -configuration Debug \
-            -destination "platform=iOS Simulator,name=iPhone 16 Pro" \
-            -derivedDataPath build \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            build
+            build 2>&1 | tee logs/build.log
+          EXIT=${PIPESTATUS[0]}
+          echo "exit_code=$EXIT" >> $GITHUB_OUTPUT
+          exit $EXIT
+
+      - name: Dump errors to job summary
+        if: failure()
+        run: |
+          {
+            echo "## ❌ Build failure"
+            echo ""
+            echo "### Errors (first 60)"
+            echo '```'
+            grep -E "error:|warning:|fatal error|\.swift:[0-9]+:[0-9]+:" logs/build.log | head -60 || echo "(no error lines matched)"
+            echo '```'
+            echo ""
+            echo "### Last 200 lines of full log"
+            echo '```'
+            tail -n 200 logs/build.log
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload full build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: logs/build.log
+          if-no-files-found: ignore
 
       - name: Run unit tests
+        if: success()
         run: |
           set -o pipefail
           xcodebuild \
             -project NeonTetris.xcodeproj \
             -scheme NeonTetris \
             -configuration Debug \
-            -destination "platform=iOS Simulator,name=iPhone 16 Pro" \
+            -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.device }}" \
             -derivedDataPath build \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            test | xcbeautify --renderer github-actions || \
-          xcodebuild \
-            -project NeonTetris.xcodeproj \
-            -scheme NeonTetris \
-            -configuration Debug \
-            -destination "platform=iOS Simulator,name=iPhone 16 Pro" \
-            -derivedDataPath build \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            test
+            test 2>&1 | tail -n 400
