@@ -26,54 +26,52 @@ struct GameView: View {
     @State private var clearBannerVisible = false
 
     var body: some View {
-        ZStack(alignment: .top) {
-            spriteLayer
-                .ignoresSafeArea()
-
-            // Top HUD — anchored to top edge of safe area.
-            topBar
-                .padding(.top, 8)
-                .padding(.horizontal, 16)
-
-            // Bottom HUD + controls — anchored to bottom edge of safe area.
-            VStack(spacing: 6) {
-                HUDView(engine: engine)
-                bottomControls
-                    .padding(.horizontal, 14)
+        spriteLayer
+            .ignoresSafeArea()
+            .overlay(alignment: .top) {
+                topBar
+                    .padding(.top, 8)
+                    .padding(.horizontal, 16)
             }
-            .padding(.bottom, 16)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-
-            // Clear announcement banner
-            if let kind = lastClearKind, clearBannerVisible, kind != .none {
-                ClearBanner(kind: kind)
-                    .transition(.scale.combined(with: .opacity))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .bottom) {
+                VStack(spacing: 6) {
+                    HUDView(engine: engine)
+                    bottomControls
+                        .padding(.horizontal, 14)
+                }
+                .padding(.bottom, 16)
             }
-
-            if showingPauseOverlay {
-                PauseOverlayView(
-                    onResume: { resumeGame() },
-                    onRestart: {
-                        engine.start()
-                        showingPauseOverlay = false
-                    },
-                    onMenu: { coordinator.go(to: .mainMenu) }
-                )
-                .transition(.opacity.combined(with: .scale))
+            .overlay(alignment: .center) {
+                if let kind = lastClearKind, clearBannerVisible, kind != .none {
+                    ClearBanner(kind: kind)
+                        .transition(.scale.combined(with: .opacity))
+                }
             }
-
-            if engine.state == .gameOver {
-                GameOverView(engine: engine,
-                             onRestart: { engine.start() },
-                             onMenu: { coordinator.go(to: .mainMenu) })
+            .overlay {
+                if showingPauseOverlay {
+                    PauseOverlayView(
+                        onResume: { resumeGame() },
+                        onRestart: {
+                            engine.start()
+                            showingPauseOverlay = false
+                        },
+                        onMenu: { coordinator.go(to: .mainMenu) }
+                    )
                     .transition(.opacity.combined(with: .scale))
+                }
             }
-        }
-        .preferredColorScheme(.dark)
-        .onAppear { wireUpOnce() }
-        .gesture(panGesture)
-        .simultaneousGesture(tapGesture)
+            .overlay {
+                if engine.state == .gameOver {
+                    GameOverView(engine: engine,
+                                 onRestart: { engine.start() },
+                                 onMenu: { coordinator.go(to: .mainMenu) })
+                        .transition(.opacity.combined(with: .scale))
+                }
+            }
+            .preferredColorScheme(.dark)
+            .onAppear { wireUpOnce() }
+            .gesture(panGesture)
+            .simultaneousGesture(tapGesture)
     }
 
     // MARK: - Sprite layer

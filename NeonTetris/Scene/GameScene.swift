@@ -10,6 +10,12 @@ final class GameScene: SKScene {
     // MARK: - Layout
     private(set) var cellSize: CGFloat = 32
     private(set) var boardRect: CGRect = .zero
+    /// Vertical space reserved at the top of the scene for the pause/hold
+    /// chips. Board top will never come above this band.
+    private let topInset: CGFloat = 110
+    /// Vertical space reserved at the bottom of the scene for the
+    /// score/hold/next HUD and the control pad.
+    private let bottomInset: CGFloat = 290
 
     // MARK: - Layers
     private let bgLayer = SKNode()
@@ -113,14 +119,19 @@ final class GameScene: SKScene {
 
         let cols = CGFloat(Board.width)
         let rows = CGFloat(Board.visibleHeight)
-        let maxW = size.width * 0.92
-        let maxH = size.height * 0.92
-        cellSize = min(maxW / cols, maxH / rows).rounded(.down)
+        // Reserve top/bottom strips for the SwiftUI HUD so locked pieces at
+        // the bottom of the playfield don't slip behind the control pad.
+        let availableW = size.width * 0.94
+        let availableH = max(0, size.height - topInset - bottomInset)
+        cellSize = min(availableW / cols, availableH / rows).rounded(.down)
+        cellSize = max(cellSize, 12)
 
         let boardW = cellSize * cols
         let boardH = cellSize * rows
         let originX = (size.width - boardW) / 2
-        let originY = (size.height - boardH) / 2
+        // SpriteKit y-up: minY of the boardRect is the gap above the bottom
+        // HUD; center the board vertically inside the available band.
+        let originY = bottomInset + (availableH - boardH) / 2
         boardRect = CGRect(x: originX, y: originY, width: boardW, height: boardH)
 
         drawGrid()
