@@ -12,10 +12,11 @@ final class GameScene: SKScene {
     private(set) var boardRect: CGRect = .zero
     /// Vertical space reserved at the top of the scene for the pause/hold
     /// chips. Board top will never come above this band.
-    private let topInset: CGFloat = 110
+    private let topInset: CGFloat = 100
     /// Vertical space reserved at the bottom of the scene for the
-    /// score/hold/next HUD and the control pad.
-    private let bottomInset: CGFloat = 290
+    /// score/hold/next HUD and the control pad. Tuned to match the
+    /// compact two-row HUDView (~140pt) + control pad (~76pt) + paddings.
+    private let bottomInset: CGFloat = 260
 
     // MARK: - Layers
     private let bgLayer = SKNode()
