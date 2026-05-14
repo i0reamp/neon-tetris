@@ -6,6 +6,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  issues: write
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -146,3 +150,40 @@ jobs:
           name: test-log
           path: logs/test.log
           if-no-files-found: ignore
+
+      - name: Post failure log as issue
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let body = `Run #${context.runNumber} failed on commit ${context.sha.slice(0,7)}.\n\n`;
+            const dumpFile = (label, path) => {
+              try {
+                const content = fs.readFileSync(path, 'utf8');
+                // Grab the most-relevant chunk for tests, full tail for build.
+                let snippet;
+                if (path.includes('test')) {
+                  const lines = content.split('\n');
+                  const matches = lines
+                    .map((l, i) => ({ l, i }))
+                    .filter(x => /(error:|XCTAssert|failed|Test Case .* (started|failed|passed)|\.swift:[0-9]+:[0-9]+|<unknown>|Stack trace)/.test(x.l))
+                    .map(x => x.l);
+                  snippet = matches.slice(0, 200).join('\n');
+                  if (!snippet) snippet = lines.slice(-200).join('\n');
+                } else {
+                  snippet = content.split('\n').slice(-200).join('\n');
+                }
+                body += `### ${label}\n\n\`\`\`\n${snippet.slice(-30000)}\n\`\`\`\n\n`;
+              } catch(e) {
+                body += `### ${label}\n\n(file missing: ${e.message})\n\n`;
+              }
+            };
+            dumpFile('Test log (filtered)', 'logs/test.log');
+            dumpFile('Build log tail', 'logs/build.log');
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `CI failure: run #${context.runNumber}`,
+              body
+            });
