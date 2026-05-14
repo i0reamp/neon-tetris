@@ -35,3 +35,8 @@ Pods/
 
 ## macOS
 .DS_Store
+
+## Local scratch / user screenshots
+111/
+*.local.png
+
