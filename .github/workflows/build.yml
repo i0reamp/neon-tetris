@@ -104,9 +104,11 @@ jobs:
           if-no-files-found: ignore
 
       - name: Run unit tests
+        id: tests
         if: success()
         run: |
-          set -o pipefail
+          set +e
+          mkdir -p logs
           xcodebuild \
             -project NeonTetris.xcodeproj \
             -scheme NeonTetris \
@@ -116,4 +118,31 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            test 2>&1 | tail -n 400
+            test 2>&1 | tee logs/test.log
+          EXIT=${PIPESTATUS[0]}
+          exit $EXIT
+
+      - name: Dump test errors to job summary
+        if: failure() && steps.tests.conclusion == 'failure'
+        run: |
+          {
+            echo "## ❌ Tests failed"
+            echo ""
+            echo "### Test failures"
+            echo '```'
+            grep -E "(error:|failed|XCTAssert|Assertion|Test Case .* failed|\.swift:[0-9]+)" logs/test.log | head -80 || echo "(no matching lines)"
+            echo '```'
+            echo ""
+            echo "### Last 250 lines"
+            echo '```'
+            tail -n 250 logs/test.log
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-log
+          path: logs/test.log
+          if-no-files-found: ignore
