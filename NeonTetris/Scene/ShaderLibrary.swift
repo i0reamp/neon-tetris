@@ -82,12 +82,14 @@ enum ShaderLibrary {
             vec2 p = uv * 2.0 - 1.0;
             float r = length(p);
 
-            float coreMask = smoothstep(0.95, 0.65, r);
-            float haloMask = smoothstep(1.20, 0.20, r);
-            float edge     = smoothstep(0.98, 0.85, r) - smoothstep(0.85, 0.55, r);
+            // Tighter falloff so the halo is concentrated on the block itself
+            // and doesn't bleed far into neighbouring cells.
+            float coreMask = smoothstep(0.90, 0.55, r);
+            float haloMask = smoothstep(1.00, 0.30, r);
+            float edge     = smoothstep(0.95, 0.80, r) - smoothstep(0.80, 0.55, r);
 
-            vec3 col = u_halo * haloMask * 0.55 + u_core * coreMask;
-            col += u_halo * edge * 1.4;
+            vec3 col = u_halo * haloMask * 0.35 + u_core * coreMask;
+            col += u_halo * edge * 0.9;
 
             float alpha = max(haloMask, coreMask);
             gl_FragColor = vec4(col, alpha);

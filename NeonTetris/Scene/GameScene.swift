@@ -50,6 +50,13 @@ final class GameScene: SKScene {
     override func didMove(to view: SKView) {
         backgroundColor = UIColor(red: 0.020, green: 0.014, blue: 0.045, alpha: 1.0)
         scaleMode = .resizeFill
+        // Force scene size to actual view bounds before any layout call — the
+        // initial size we were constructed with (in SceneHolder) does not
+        // match the on-device view bounds, and the eventual auto-resize that
+        // .resizeFill performs only fires on the *next* present cycle.
+        if view.bounds.size != .zero {
+            self.size = view.bounds.size
+        }
         view.ignoresSiblingOrder = true
         view.preferredFramesPerSecond = 60
         view.shouldCullNonVisibleNodes = true

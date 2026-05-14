@@ -25,7 +25,10 @@ final class BlockNode: SKNode {
     private func configure() {
         // Halo — the shader paints the whole sprite, so we keep the base color
         // opaque so SpriteKit does not pre-multiply the shader output by zero.
-        let haloSize = CGSize(width: size * 2.0, height: size * 2.0)
+        // Keep the halo close to the cell footprint so adjacent cells of the
+        // same piece don't fuse into one big bright blob (which made the O/I
+        // pieces unreadable).
+        let haloSize = CGSize(width: size * 1.25, height: size * 1.25)
         halo.size = haloSize
         halo.color = UIColor.white
         halo.colorBlendFactor = 0
@@ -64,8 +67,11 @@ final class BlockNode: SKNode {
         self.shape = shape
         let color = shape.color
 
-        let coreFloat = Self.floatTriplet(from: color.core, mul: 0.45 * intensity)
-        let haloFloat = Self.floatTriplet(from: color.glow, mul: 1.0 * intensity)
+        let coreFloat = Self.floatTriplet(from: color.core, mul: 0.55 * intensity)
+        // Per-cell halo is intentionally dim — adjacent cells of the same
+        // tetromino overlap on additive blend, so a bright halo per cell
+        // saturates and the piece reads as one big blob. Keep it low.
+        let haloFloat = Self.floatTriplet(from: color.glow, mul: 0.55 * intensity)
         halo.shader = ShaderLibrary.blockEmissive(core: coreFloat, halo: haloFloat)
         halo.color = UIColor.white
         halo.colorBlendFactor = 0

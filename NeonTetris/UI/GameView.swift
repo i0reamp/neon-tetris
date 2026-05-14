@@ -26,30 +26,29 @@ struct GameView: View {
     @State private var clearBannerVisible = false
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .top) {
             spriteLayer
                 .ignoresSafeArea()
 
-            // Top HUD
-            VStack {
-                topBar
-                Spacer()
-            }
+            // Top HUD — anchored to top edge of safe area.
+            topBar
+                .padding(.top, 8)
+                .padding(.horizontal, 16)
 
-            // Bottom HUD + controls
-            VStack {
-                Spacer()
+            // Bottom HUD + controls — anchored to bottom edge of safe area.
+            VStack(spacing: 6) {
                 HUDView(engine: engine)
-                    .padding(.bottom, 6)
                 bottomControls
                     .padding(.horizontal, 14)
-                    .padding(.bottom, 16)
             }
+            .padding(.bottom, 16)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
 
             // Clear announcement banner
             if let kind = lastClearKind, clearBannerVisible, kind != .none {
                 ClearBanner(kind: kind)
                     .transition(.scale.combined(with: .opacity))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
 
             if showingPauseOverlay {
