@@ -31,8 +31,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Select Xcode 16
-        run: sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
+      - name: Pick newest Xcode 16
+        run: |
+          NEWEST=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -n 1)
+          if [ -z "$NEWEST" ]; then
+            NEWEST=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -n 1)
+          fi
+          if [ -z "$NEWEST" ]; then
+            echo "::error::No Xcode found on runner"; exit 1
+          fi
+          sudo xcode-select -s "$NEWEST/Contents/Developer"
+          xcodebuild -version
 
       - name: Install signing certificate
         env:

@@ -18,8 +18,43 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Select Xcode 16
-        run: sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
+      - name: Pick newest Xcode 16
+        run: |
+          NEWEST=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -n 1)
+          if [ -z "$NEWEST" ]; then
+            NEWEST=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -n 1)
+          fi
+          if [ -z "$NEWEST" ]; then
+            echo "::error::No Xcode found on runner"; exit 1
+          fi
+          sudo xcode-select -s "$NEWEST/Contents/Developer"
+          xcodebuild -version
+
+      - name: Pick a Simulator device that exists
+        id: sim
+        run: |
+          DEVICE=$(xcrun simctl list devices available --json | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          want = '${{ inputs.device }}'.strip()
+          best = None
+          for runtime, devs in data['devices'].items():
+              if 'iOS' not in runtime: continue
+              for d in devs:
+                  if d.get('isAvailable') and (not want or d.get('name') == want):
+                      best = d['name']; break
+              if best: break
+          if not best:
+              for runtime, devs in data['devices'].items():
+                  if 'iOS' not in runtime: continue
+                  for d in devs:
+                      if d.get('isAvailable') and 'iPhone' in d.get('name',''):
+                          best = d['name']; break
+                  if best: break
+          print(best or 'iPhone 16 Pro')
+          ")
+          echo "Picked simulator device: $DEVICE"
+          echo "device=$DEVICE" >> $GITHUB_OUTPUT
 
       - name: Build for simulator
         run: |
@@ -51,10 +86,10 @@ jobs:
           zip -ry "$GITHUB_WORKSPACE/artifacts/NeonTetris-Simulator.zip" "NeonTetris.app"
 
       - name: Boot simulator and install
-        id: sim
+        id: boot
         run: |
           # Create a fresh simulator each run so screenshots are deterministic.
-          UDID=$(xcrun simctl create "NeonTetris-CI" "${{ inputs.device }}")
+          UDID=$(xcrun simctl create "NeonTetris-CI" "${{ steps.sim.outputs.device }}")
           echo "UDID=$UDID" >> $GITHUB_OUTPUT
           xcrun simctl boot "$UDID"
           xcrun simctl bootstatus "$UDID" -b
@@ -62,7 +97,7 @@ jobs:
 
       - name: Launch app and capture screenshots
         run: |
-          UDID="${{ steps.sim.outputs.UDID }}"
+          UDID="${{ steps.boot.outputs.UDID }}"
           mkdir -p Screenshots
 
           # Bundle ID matches PRODUCT_BUNDLE_IDENTIFIER in the project.
@@ -90,7 +125,7 @@ jobs:
       - name: Teardown simulator
         if: always()
         run: |
-          UDID="${{ steps.sim.outputs.UDID }}"
+          UDID="${{ steps.boot.outputs.UDID }}"
           if [ -n "$UDID" ]; then
             xcrun simctl shutdown "$UDID" || true
             xcrun simctl delete "$UDID" || true
