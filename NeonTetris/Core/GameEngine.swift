@@ -161,7 +161,9 @@ final class GameEngine: ObservableObject {
             return
         }
         active = piece
-        hasUsedHold = false
+        // hasUsedHold is intentionally NOT reset here — it must persist across
+        // the hold-triggered spawn so a player can't double-hold within one
+        // piece life. Reset happens in lockPiece / finalizeClear / start().
         gravityAccumulator = 0
         lockDelay = 0
         emit(.spawned(next))
@@ -224,6 +226,7 @@ final class GameEngine: ObservableObject {
             let bonus = score.registerLock(linesCleared: 0)
             if bonus > 0 { emit(.scoreAwarded(bonus)) }
             active = nil
+            hasUsedHold = false
             spawnNext()
         }
     }
@@ -240,6 +243,7 @@ final class GameEngine: ObservableObject {
         clearingRows = []
         active = nil
         state = .playing
+        hasUsedHold = false
         spawnNext()
     }
 
